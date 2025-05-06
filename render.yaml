@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: ai-vision-inspector
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ROBOFLOW_API_KEY
+        sync: false # This indicates that the value will be set in the Render dashboard
+      - key: ROBOFLOW_ENDPOINT
+        value: https://serverless.roboflow.com/infer/workflows/obinopaul/project
+    autoDeploy: true

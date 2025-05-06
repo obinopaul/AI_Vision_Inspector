@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Vision Inspector | Roboflow + OpenAI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+        
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --secondary: #f59e0b;
+            --dark: #1e293b;
+            --light: #f8fafc;
+        }
+        
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: #f1f5f9;
+            min-height: 100vh;
+        }
+        
+        .dropzone {
+            transition: all 0.3s ease;
+            border: 2px dashed #cbd5e1;
+        }
+        
+        .dropzone.active {
+            border-color: var(--primary);
+            background-color: rgba(99, 102, 241, 0.05);
+        }
+        
+        .object-item {
+            transition: all 0.2s ease;
+        }
+        
+        .object-item:hover {
+            transform: translateX(4px);
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(99, 102, 241, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+        }
+        
+        .glow {
+            box-shadow: 0 0 10px rgba(99, 102, 241, 0.5);
+        }
+        
+        .description-text {
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        }
+        
+        .crop-carousel {
+            scrollbar-width: thin;
+            scrollbar-color: var(--primary) #e2e8f0;
+        }
+        
+        .crop-carousel::-webkit-scrollbar {
+            height: 6px;
+        }
+        
+        .crop-carousel::-webkit-scrollbar-track {
+            background: #e2e8f0;
+            border-radius: 3px;
+        }
+        
+        .crop-carousel::-webkit-scrollbar-thumb {
+            background-color: var(--primary);
+            border-radius: 3px;
+        }
+        
+        .crop-item {
+            min-width: 200px;
+            max-width: 280px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .crop-item:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+    </style>
+</head>
+<body class="flex flex-col">
+    <header class="bg-gradient-to-r from-indigo-500 to-indigo-600 text-white shadow-lg">
+        <div class="container mx-auto px-4 py-6">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <i class="fas fa-robot text-3xl"></i>
+                    <h1 class="text-2xl font-bold">AI Vision Inspector</h1>
+                </div>
+                <div class="hidden md:flex items-center space-x-4">
+                    <span class="px-3 py-1 bg-indigo-400 rounded-full text-sm font-medium">Roboflow</span>
+                    <span class="px-3 py-1 bg-amber-400 rounded-full text-sm font-medium">OpenAI</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-grow container mx-auto px-4 py-8">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Upload Panel -->
+            <div class="bg-white rounded-xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl">
+                <div class="bg-indigo-600 text-white px-6 py-4">
+                    <h2 class="text-xl font-semibold flex items-center space-x-2">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        <span>Upload Image</span>
+                    </h2>
+                </div>
+                <div class="p-6">
+                    <div id="dropzone" class="dropzone rounded-lg p-8 text-center cursor-pointer mb-6">
+                        <input type="file" id="fileInput" accept="image/*" class="hidden">
+                        <div class="flex flex-col items-center justify-center space-y-4">
+                            <i class="fas fa-image text-4xl text-indigo-400"></i>
+                            <p class="text-gray-600">Drag & drop your image here or click to browse</p>
+                            <button id="browseBtn" class="px-6 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors">
+                                Select Image
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="imagePreviewContainer" class="hidden mb-6">
+                        <h3 class="text-sm font-medium text-gray-500 mb-2">Image Preview</h3>
+                        <div class="relative rounded-lg overflow-hidden border border-gray-200">
+                            <img id="imagePreview" src="#" alt="Preview" class="w-full h-auto max-h-64 object-contain">
+                            <button id="clearPreviewBtn" class="absolute top-2 right-2 bg-white rounded-full p-2 shadow-md hover:bg-gray-100">
+                                <i class="fas fa-times text-gray-600"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <button id="processBtn" class="w-full py-3 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-lg font-medium hover:from-indigo-600 hover:to-indigo-700 transition-all flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <span>Process Image</span>
+                        <i class="fas fa-magic"></i>
+                    </button>
+                    
+                    <div id="loadingIndicator" class="hidden mt-4 text-center">
+                        <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500"></div>
+                        <p class="mt-2 text-gray-600">Analyzing image with AI...</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Annotated Image Panel -->
+            <div class="bg-white rounded-xl shadow-lg overflow-hidden lg:col-span-1 transition-all duration-300 hover:shadow-xl">
+                <div class="bg-indigo-600 text-white px-6 py-4">
+                    <h2 class="text-xl font-semibold flex items-center space-x-2">
+                        <i class="fas fa-eye"></i>
+                        <span>Detected Objects</span>
+                    </h2>
+                </div>
+                <div class="p-6">
+                    <div id="annotatedImageContainer" class="flex items-center justify-center min-h-64 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                        <div id="emptyState" class="text-center p-6">
+                            <i class="fas fa-image text-4xl text-gray-300 mb-3"></i>
+                            <p class="text-gray-500">Processed image will appear here</p>
+                        </div>
+                        <img id="annotatedImage" src="#" alt="Annotated Image" class="hidden w-full h-auto max-h-96 object-contain rounded-lg">
+                    </div>
+                    
+                    <div id="detectionStats" class="hidden mt-4 grid grid-cols-2 gap-4">
+                        <div class="bg-indigo-50 p-3 rounded-lg">
+                            <p class="text-xs text-indigo-500 font-medium">Objects Found</p>
+                            <p id="objectCount" class="text-xl font-bold text-indigo-700">0</p>
+                        </div>
+                        <div class="bg-amber-50 p-3 rounded-lg">
+                            <p class="text-xs text-amber-500 font-medium">Processing Time</p>
+                            <p id="processingTime" class="text-xl font-bold text-amber-700">0ms</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Info Panel -->
+            <div class="bg-white rounded-xl shadow-lg overflow-hidden lg:col-span-1 transition-all duration-300 hover:shadow-xl">
+                <div class="bg-indigo-600 text-white px-6 py-4">
+                    <h2 class="text-xl font-semibold flex items-center space-x-2">
+                        <i class="fas fa-info-circle"></i>
+                        <span>Analysis Results</span>
+                    </h2>
+                </div>
+                <div class="p-6">
+                    <div id="detectedObjectsSection" class="mb-6">
+                        <h3 class="text-sm font-medium text-gray-500 mb-3 flex items-center">
+                            <i class="fas fa-list-ul mr-2"></i> Detected Items
+                        </h3>
+                        <div id="emptyObjectsState" class="text-center py-8 bg-gray-50 rounded-lg">
+                            <i class="fas fa-box-open text-3xl text-gray-300 mb-2"></i>
+                            <p class="text-gray-500">No objects detected yet</p>
+                        </div>
+                        <ul id="objectList" class="hidden space-y-2 max-h-64 overflow-y-auto pr-2">
+                            <!-- Objects will be added here dynamically -->
+                        </ul>
+                    </div>
+                    
+                    <div id="descriptionSection" class="mb-6">
+                        <h3 class="text-sm font-medium text-gray-500 mb-3 flex items-center">
+                            <i class="fas fa-comment-alt mr-2"></i> AI Description
+                        </h3>
+                        <div id="emptyDescriptionState" class="text-center py-8 bg-gray-50 rounded-lg">
+                            <i class="fas fa-comment-slash text-3xl text-gray-300 mb-2"></i>
+                            <p class="text-gray-500">No description available yet</p>
+                        </div>
+                        <div id="descriptionText" class="hidden p-4 rounded-lg description-text border border-gray-200">
+                            <!-- Description will be added here dynamically -->
+                        </div>
+                    </div>
+                    
+                    <div class="flex justify-end">
+                        <button id="copyResultsBtn" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center space-x-2 disabled:opacity-50">
+                            <i class="fas fa-copy"></i>
+                            <span>Copy Results</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Crops Section - NEW -->
+        <div id="cropsSection" class="hidden mt-8">
+            <div class="bg-white rounded-xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl">
+                <div class="bg-indigo-600 text-white px-6 py-4">
+                    <h2 class="text-xl font-semibold flex items-center space-x-2">
+                        <i class="fas fa-crop-alt"></i>
+                        <span>Object Analysis</span>
+                    </h2>
+                </div>
+                <div class="p-6">
+                    <div id="emptyCropsState" class="text-center py-12 bg-gray-50 rounded-lg">
+                        <i class="fas fa-object-group text-4xl text-gray-300 mb-3"></i>
+                        <p class="text-gray-500">No object crops available yet</p>
+                    </div>
+                    
+                    <div id="cropsContainer" class="hidden">
+                        <p class="text-gray-500 text-sm mb-3">Scroll horizontally to view all detected objects with their AI descriptions</p>
+                        
+                        <div id="cropCarousel" class="crop-carousel flex overflow-x-auto gap-4 pb-4">
+                            <!-- Crops will be added here dynamically -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="bg-gray-800 text-white py-6">
+        <div class="container mx-auto px-4 text-center">
+            <p class="mb-2">AI Vision Inspector - Powered by Roboflow & OpenAI</p>
+            <p class="text-sm text-gray-400">Upload an image to detect objects and generate descriptions using AI</p>
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // DOM Elements
+            const fileInput = document.getElementById('fileInput');
+            const browseBtn = document.getElementById('browseBtn');
+            const dropzone = document.getElementById('dropzone');
+            const imagePreview = document.getElementById('imagePreview');
+            const imagePreviewContainer = document.getElementById('imagePreviewContainer');
+            const clearPreviewBtn = document.getElementById('clearPreviewBtn');
+            const processBtn = document.getElementById('processBtn');
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            const annotatedImage = document.getElementById('annotatedImage');
+            const annotatedImageContainer = document.getElementById('annotatedImageContainer');
+            const emptyState = document.getElementById('emptyState');
+            const objectList = document.getElementById('objectList');
+            const emptyObjectsState = document.getElementById('emptyObjectsState');
+            const descriptionText = document.getElementById('descriptionText');
+            const emptyDescriptionState = document.getElementById('emptyDescriptionState');
+            const detectionStats = document.getElementById('detectionStats');
+            const objectCount = document.getElementById('objectCount');
+            const processingTime = document.getElementById('processingTime');
+            const copyResultsBtn = document.getElementById('copyResultsBtn');
+            
+            // New Crops Section Elements
+            const cropsSection = document.getElementById('cropsSection');
+            const emptyCropsState = document.getElementById('emptyCropsState');
+            const cropsContainer = document.getElementById('cropsContainer');
+            const cropCarousel = document.getElementById('cropCarousel');
+            
+            // Variables
+            let selectedFile = null;
+            let processingStartTime = 0;
+            
+            // Event Listeners
+            browseBtn.addEventListener('click', () => fileInput.click());
+            clearPreviewBtn.addEventListener('click', clearImagePreview);
+            processBtn.addEventListener('click', processImage);
+            copyResultsBtn.addEventListener('click', copyResultsToClipboard);
+            
+            // File input change handler
+            fileInput.addEventListener('change', function(e) {
+                if (e.target.files.length) {
+                    handleFileSelection(e.target.files[0]);
+                }
+            });
+            
+            // Drag and drop handlers
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropzone.addEventListener(eventName, preventDefaults, false);
+            });
+            
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropzone.addEventListener(eventName, highlight, false);
+            });
+            
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropzone.addEventListener(eventName, unhighlight, false);
+            });
+            
+            function highlight() {
+                dropzone.classList.add('active', 'glow');
+            }
+            
+            function unhighlight() {
+                dropzone.classList.remove('active', 'glow');
+            }
+            
+            dropzone.addEventListener('drop', function(e) {
+                const dt = e.dataTransfer;
+                const file = dt.files[0];
+                if (file && file.type.match('image.*')) {
+                    handleFileSelection(file);
+                }
+            });
+            
+            // Functions
+            function handleFileSelection(file) {
+                if (!file.type.match('image.*')) {
+                    showAlert('Please select an image file (JPEG, PNG)');
+                    return;
+                }
+                
+                selectedFile = file;
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    imagePreview.src = e.target.result;
+                    imagePreviewContainer.classList.remove('hidden');
+                    dropzone.classList.add('hidden');
+                    processBtn.disabled = false;
+                };
+                reader.readAsDataURL(file);
+            }
+            
+            function clearImagePreview() {
+                selectedFile = null;
+                fileInput.value = '';
+                imagePreview.src = '#';
+                imagePreviewContainer.classList.add('hidden');
+                dropzone.classList.remove('hidden');
+                processBtn.disabled = true;
+            }
+            
+            async function processImage() {
+                if (!selectedFile) {
+                    showAlert('Please select an image first');
+                    return;
+                }
+                
+                // Show loading state
+                processBtn.disabled = true;
+                loadingIndicator.classList.remove('hidden');
+                processingStartTime = Date.now();
+                
+                try {
+                    // Convert image to base64
+                    const base64Image = await getBase64(selectedFile);
+                    
+                    // Prepare API request with the working format
+                    const apiKey = 'dOBeh4ZsKyPLpCpPBk6V'; // WARNING: API Key exposed client-side. For production, use a backend proxy.
+                    const requestData = {
+                        api_key: apiKey,
+                        inputs: {
+                            image: {
+                                type: "base64",
+                                value: base64Image.split(',')[1] // Remove the data URL prefix
+                            }
+                        }
+                    };
+                    
+                    // Call Roboflow API with the direct approach that worked in Python
+                    const response = await fetch('https://serverless.roboflow.com/infer/workflows/obinopaul/project', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(requestData)
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`API request failed with status ${response.status}: ${await response.text()}`);
+                    }
+                    
+                    const result = await response.json();
+                    
+                    // Update UI with results - use outputs[0] based on your Python example
+                    if (result && result.outputs && result.outputs.length > 0) {
+                        updateUIWithResults(result.outputs[0]);
+                    } else {
+                        showAlert('No results returned from API');
+                    }
+                    
+                } catch (error) {
+                    console.error('Error processing image:', error);
+                    showAlert(`Failed to process image: ${error.message}`);
+                } finally {
+                    // Hide loading state
+                    loadingIndicator.classList.add('hidden');
+                    processBtn.disabled = false;
+                }
+            }
+            
+            function getBase64(file) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.readAsDataURL(file);
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = error => reject(error);
+                });
+            }
+            
+            function updateUIWithResults(result) {
+                // Calculate processing time
+                const processingDuration = Date.now() - processingStartTime;
+                
+                // Update annotated image
+                if (result.output_image && result.output_image.value) {
+                    emptyState.classList.add('hidden');
+                    annotatedImage.src = `data:image/jpeg;base64,${result.output_image.value}`;
+                    annotatedImage.classList.remove('hidden');
+                    annotatedImage.classList.add('fade-in');
+                }
+                
+                // Update detected objects list - handle the nested predictions structure
+                if (result.predictions && result.predictions.predictions) {
+                    const predictions = result.predictions.predictions;
+                    
+                    if (predictions && predictions.length > 0) {
+                        emptyObjectsState.classList.add('hidden');
+                        objectList.innerHTML = '';
+                        
+                        predictions.forEach((obj, index) => {
+                            const confidencePercentage = obj.confidence ? Math.round(obj.confidence * 100) : 'N/A';
+                            const listItem = document.createElement('li');
+                            listItem.className = 'object-item bg-gray-50 p-3 rounded-lg flex items-center justify-between';
+                            listItem.innerHTML = `
+                                <div class="flex items-center space-x-3">
+                                    <span class="w-6 h-6 flex items-center justify-center bg-indigo-100 text-indigo-600 rounded-full text-xs font-bold">${index + 1}</span>
+                                    <span class="font-medium">${obj.class}</span>
+                                </div>
+                                <span class="text-sm px-2 py-1 bg-indigo-50 text-indigo-600 rounded">${confidencePercentage}%</span>
+                            `;
+                            objectList.appendChild(listItem);
+                        });
+                        
+                        objectList.classList.remove('hidden');
+                        objectCount.textContent = predictions.length;
+                    } else {
+                        emptyObjectsState.classList.remove('hidden');
+                        objectList.classList.add('hidden');
+                        objectCount.textContent = '0';
+                    }
+                } else {
+                    emptyObjectsState.classList.remove('hidden');
+                    objectList.classList.add('hidden');
+                    objectCount.textContent = '0';
+                }
+                
+                // Update AI description for the whole image
+                if (result.open_ai && result.open_ai.length > 0) {
+                    emptyDescriptionState.classList.add('hidden');
+                    
+                    // Get the first description from the open_ai array
+                    const description = result.open_ai[0].output;
+                    
+                    descriptionText.innerHTML = `<p class="text-gray-700">${description}</p>`;
+                    descriptionText.classList.remove('hidden');
+                    descriptionText.classList.add('fade-in');
+                } else {
+                    emptyDescriptionState.classList.remove('hidden');
+                    descriptionText.classList.add('hidden');
+                }
+                
+                // Update stats
+                processingTime.textContent = `${processingDuration}ms`;
+                detectionStats.classList.remove('hidden');
+                
+                // Enable copy button
+                copyResultsBtn.disabled = false;
+                
+                // NEW: Update crops section
+                updateCropsSection(result);
+            }
+            
+            function updateCropsSection(result) {
+                // Check if we have predictions to create crops from
+                if (result.predictions && result.predictions.predictions && result.predictions.predictions.length > 0) {
+                    // Show the crops section
+                    cropsSection.classList.remove('hidden');
+                    emptyCropsState.classList.add('hidden');
+                    cropsContainer.classList.remove('hidden');
+                    
+                    // Clear existing crops
+                    cropCarousel.innerHTML = '';
+                    
+                    // Get original image dimensions
+                    const imgWidth = result.predictions.image.width;
+                    const imgHeight = result.predictions.image.height;
+                    
+                    // We'll need the annotated image to create crops
+                    const originalImgBase64 = result.output_image && result.output_image.value 
+                        ? result.output_image.value 
+                        : null;
+                    
+                    if (!originalImgBase64) {
+                        console.error("No annotated image available for cropping");
+                        return;
+                    }
+                    
+                    // Create a crop card for each prediction
+                    result.predictions.predictions.forEach((prediction, index) => {
+                        // Get coordinates from prediction
+                        const x = prediction.x;
+                        const y = prediction.y;
+                        const width = prediction.width;
+                        const height = prediction.height;
+                        const className = prediction.class || 'Unknown';
+                        const confidence = prediction.confidence ? Math.round(prediction.confidence * 100) : 'N/A';
+                        
+                        // Calculate crop coordinates
+                        const left = Math.max(0, x - width/2);
+                        const top = Math.max(0, y - height/2);
+                        const right = Math.min(imgWidth, x + width/2);
+                        const bottom = Math.min(imgHeight, y + height/2);
+                        
+                        // Get AI description if available
+                        let description = 'No description available';
+                        
+                        // Match the crop with the corresponding OpenAI description
+                        if (result.open_ai && result.open_ai.length > index) {
+                            description = result.open_ai[index].output || 'No description available';
+                        }
+                        
+                        // Create crop card
+                        const cropCard = document.createElement('div');
+                        cropCard.className = 'crop-item bg-white rounded-lg shadow-md overflow-hidden border border-gray-200 cursor-pointer';
+                        cropCard.setAttribute('data-index', index);
+                        
+                        // Since we can't directly crop the base64 image in JavaScript,
+                        // we'll use a canvas to extract the crop
+                        const cropContainer = document.createElement('div');
+                        cropContainer.className = 'relative w-full h-40 bg-gray-50 flex items-center justify-center overflow-hidden';
+                        
+                        // Show loading state
+                        cropContainer.innerHTML = `
+                            <div class="absolute inset-0 flex items-center justify-center">
+                                <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500"></div>
+                            </div>
+                        `;
+                        
+                        // Create crop header
+                        const cropHeader = document.createElement('div');
+                        cropHeader.className = 'px-4 py-3 border-b border-gray-200 bg-indigo-50';
+                        cropHeader.innerHTML = `
+                            <div class="flex justify-between items-center">
+                                <h3 class="text-sm font-medium text-indigo-600">${className}</h3>
+                                <span class="px-2 py-1 text-xs bg-indigo-100 text-indigo-700 rounded-full">${confidence}%</span>
+                            </div>
+                        `;
+                        
+                        // Create crop description
+                        const cropDescription = document.createElement('div');
+                        cropDescription.className = 'px-4 py-3';
+                        cropDescription.innerHTML = `
+                            <h4 class="text-xs font-medium text-gray-500 mb-1">AI Description</h4>
+                            <p class="text-xs text-gray-700 h-24 overflow-y-auto">${description}</p>
+                        `;
+                        
+                        // Assemble crop card
+                        cropCard.appendChild(cropContainer);
+                        cropCard.appendChild(cropHeader);
+                        cropCard.appendChild(cropDescription);
+                        
+                        // Add to carousel
+                        cropCarousel.appendChild(cropCard);
+                        
+                        // Create the crop from the original image
+                        createCropImage(originalImgBase64, left, top, right, bottom, cropContainer);
+                    });
+                } else {
+                    // Hide crops section if no predictions
+                    cropsSection.classList.remove('hidden');
+                    emptyCropsState.classList.remove('hidden');
+                    cropsContainer.classList.add('hidden');
+                }
+            }
+            
+            function createCropImage(base64Image, left, top, right, bottom, container) {
+                // Create an image element to load the full image
+                const img = new Image();
+                img.onload = function() {
+                    // Create a canvas to draw the crop
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    
+                    // Calculate crop dimensions
+                    const cropWidth = right - left;
+                    const cropHeight = bottom - top;
+                    
+                    // Set canvas size to crop size
+                    canvas.width = cropWidth;
+                    canvas.height = cropHeight;
+                    
+                    // Draw the cropped portion of the image onto the canvas
+                    ctx.drawImage(
+                        img,
+                        left, top, cropWidth, cropHeight,  // Source coordinates
+                        0, 0, cropWidth, cropHeight        // Destination coordinates
+                    );
+                    
+                    // Convert canvas to data URL
+                    const croppedImageDataUrl = canvas.toDataURL('image/jpeg');
+                    
+                    // Create and add the image to the container
+                    const cropImg = document.createElement('img');
+                    cropImg.src = croppedImageDataUrl;
+                    cropImg.alt = 'Cropped object';
+                    cropImg.className = 'max-h-40 max-w-full object-contain p-1';
+                    
+                    // Clear loading state and add the image
+                    container.innerHTML = '';
+                    container.appendChild(cropImg);
+                };
+                
+                // Set crossOrigin to anonymous to avoid CORS issues with canvas
+                img.crossOrigin = 'anonymous';
+                
+                // Set the source of the image to the base64 string
+                img.src = `data:image/jpeg;base64,${base64Image}`;
+                
+                // Handle load errors
+                img.onerror = function() {
+                    console.error('Error loading image for cropping');
+                    container.innerHTML = `
+                        <div class="w-full h-full flex items-center justify-center">
+                            <div class="text-red-500">
+                                <i class="fas fa-exclamation-circle text-xl mb-2"></i>
+                                <p class="text-xs">Error loading image</p>
+                            </div>
+                        </div>
+                    `;
+                };
+            }
+            
+            function copyResultsToClipboard() {
+                let resultsText = '';
+                
+                // Add objects list
+                if (!emptyObjectsState.classList.contains('hidden')) {
+                    resultsText += "Detected Objects: None\n\n";
+                } else {
+                    resultsText += "Detected Objects:\n";
+                    const items = objectList.querySelectorAll('li');
+                    items.forEach(item => {
+                        const objName = item.querySelector('span.font-medium').textContent;
+                        const confidence = item.querySelector('span.text-sm').textContent;
+                        resultsText += `- ${objName} (${confidence})\n`;
+                    });
+                    resultsText += '\n';
+                }
+                
+                // Add description
+                if (!emptyDescriptionState.classList.contains('hidden')) {
+                    resultsText += "Description: None available\n";
+                } else {
+                    resultsText += `Description: ${descriptionText.textContent.trim()}\n`;
+                }
+                
+                // Add crop descriptions if available
+                if (!emptyCropsState.classList.contains('hidden')) {
+                    resultsText += "\nIndividual Object Descriptions: None available\n";
+                } else {
+                    resultsText += "\nIndividual Object Descriptions:\n";
+                    const cropItems = cropCarousel.querySelectorAll('.crop-item');
+                    cropItems.forEach((item, index) => {
+                        const objName = item.querySelector('h3').textContent;
+                        const confidence = item.querySelector('span').textContent;
+                        const description = item.querySelector('p').textContent;
+                        resultsText += `\n${index + 1}. ${objName} (${confidence}):\n${description}\n`;
+                    });
+                }
+                
+                // Copy to clipboard
+                navigator.clipboard.writeText(resultsText).then(() => {
+                    // Show success feedback
+                    const originalText = copyResultsBtn.innerHTML;
+                    copyResultsBtn.innerHTML = '<i class="fas fa-check"></i> <span>Copied!</span>';
+                    copyResultsBtn.classList.remove('bg-gray-100', 'text-gray-700');
+                    copyResultsBtn.classList.add('bg-green-100', 'text-green-700');
+                    
+                    setTimeout(() => {
+                        copyResultsBtn.innerHTML = originalText;
+                        copyResultsBtn.classList.remove('bg-green-100', 'text-green-700');
+                        copyResultsBtn.classList.add('bg-gray-100', 'text-gray-700');
+                    }, 2000);
+                }).catch(err => {
+                    console.error('Failed to copy results:', err);
+                    showAlert('Failed to copy results to clipboard');
+                });
+            }
+            
+            function showAlert(message) {
+                // In a real app, you might use a more sophisticated notification system
+                alert(message);
+            }
+        });
+    </script>
+    <!-- Lightbox for enlarged crop view -->
+    <div id="lightbox" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden">
+        <div class="relative bg-white rounded-lg max-w-3xl w-full mx-4 overflow-hidden">
+            <div class="bg-indigo-600 text-white px-6 py-4 flex justify-between items-center">
+                <h3 id="lightboxTitle" class="text-xl font-semibold">Object Details</h3>
+                <button id="closeLightbox" class="text-white hover:text-gray-200">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="p-6">
+                <div class="flex flex-col md:flex-row gap-6">
+                    <div class="w-full md:w-1/2">
+                        <div class="bg-gray-50 p-4 rounded-lg flex items-center justify-center">
+                            <img id="lightboxImage" src="" alt="Enlarged crop" class="max-h-80 max-w-full object-contain">
+                        </div>
+                        <div class="mt-4 p-3 bg-indigo-50 rounded-lg">
+                            <div class="flex justify-between items-center">
+                                <span id="lightboxClass" class="font-medium text-indigo-700">Class Name</span>
+                                <span id="lightboxConfidence" class="px-2 py-1 bg-indigo-100 text-indigo-700 rounded-full text-sm">Confidence</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="w-full md:w-1/2">
+                        <h4 class="text-sm font-medium text-gray-500 mb-2">AI Description</h4>
+                        <div id="lightboxDescription" class="bg-gray-50 p-4 rounded-lg h-64 overflow-y-auto text-gray-700">
+                            Description text will appear here.
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-gray-100 px-6 py-4 flex justify-end">
+                <button id="lightboxCopy" class="px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors flex items-center space-x-2">
+                    <i class="fas fa-copy"></i>
+                    <span>Copy Description</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize lightbox functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const lightbox = document.getElementById('lightbox');
+            const lightboxImage = document.getElementById('lightboxImage');
+            const lightboxClass = document.getElementById('lightboxClass');
+            const lightboxConfidence = document.getElementById('lightboxConfidence');
+            const lightboxDescription = document.getElementById('lightboxDescription');
+            const lightboxTitle = document.getElementById('lightboxTitle');
+            const closeLightbox = document.getElementById('closeLightbox');
+            const lightboxCopy = document.getElementById('lightboxCopy');
+            
+            // Close lightbox when clicking close button
+            closeLightbox.addEventListener('click', function() {
+                lightbox.classList.add('hidden');
+            });
+            
+            // Close lightbox when clicking outside the content
+            lightbox.addEventListener('click', function(e) {
+                if (e.target === lightbox) {
+                    lightbox.classList.add('hidden');
+                }
+            });
+            
+            // Copy description from lightbox
+            lightboxCopy.addEventListener('click', function() {
+                const textToCopy = lightboxDescription.textContent;
+                navigator.clipboard.writeText(textToCopy).then(function() {
+                    const originalText = lightboxCopy.innerHTML;
+                    lightboxCopy.innerHTML = '<i class="fas fa-check"></i> <span>Copied!</span>';
+                    
+                    setTimeout(function() {
+                        lightboxCopy.innerHTML = originalText;
+                    }, 2000);
+                }).catch(function(err) {
+                    console.error('Failed to copy text: ', err);
+                });
+            });
+            
+            // Add event delegation for opening lightbox when a crop is clicked
+            document.addEventListener('click', function(e) {
+                const cropItem = e.target.closest('.crop-item');
+                if (cropItem) {
+                    const image = cropItem.querySelector('img').src;
+                    const className = cropItem.querySelector('h3').textContent;
+                    const confidence = cropItem.querySelector('span').textContent;
+                    const description = cropItem.querySelector('p').textContent;
+                    
+                    lightboxImage.src = image;
+                    lightboxClass.textContent = className;
+                    lightboxConfidence.textContent = confidence;
+                    lightboxDescription.textContent = description;
+                    lightboxTitle.textContent = `${className} Details`;
+                    
+                    lightbox.classList.remove('hidden');
+                }
+            });
+        });
+    </script>
+</body>
